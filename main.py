@@ -19,7 +19,7 @@ def keep_alive():
     t.start()
 
 # 2. आपका टेलीग्राम बॉट टोकन
-API_TOKEN = "8678880550:AAGOQEJ_xQMgfOAlK1Yg9_vjD6wsc88N0D8"
+API_TOKEN = "8678880550:AAGOQEJ_xQMgfOALgQAqqtq0VSTFUQDwiOY"
 bot = telebot.TeleBot(API_TOKEN)
 
 # 3. आपकी टेलीग्राम Numeric ID
