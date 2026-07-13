@@ -9,7 +9,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Free Fire UTR Bot is Alive!"
+    return "Free Fire Bot is Alive!"
 
 def run():
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
@@ -18,16 +18,13 @@ def keep_alive():
     t = Thread(target=run)
     t.start()
 
-# 2. बॉट और एडमिन सेटअप
+# 2. आपका टेलीग्राम बॉट टोकन
 API_TOKEN = "8678880550:AAGOQEJ_xQMgfOAlK1Yg9_vjD6wsc88N0D8"
 bot = telebot.TeleBot(API_TOKEN)
 
+# 3. आपकी टेलीग्राम Numeric ID
 ADMIN_ID = 7694125647
 MAX_PLAYERS = 48  # टूर्नामेंट के लिए अधिकतम खिलाड़ी
-
-# आपकी असली UPI ID और पे-लिंक डिटेल्स
-UPI_ID = "tarunsaini5500@ptyes"
-PAYMENT_URL = "upi://pay?pa=tarunsaini5500@ptyes&pn=Tarun%20Saini"
 
 # डेटाबेस सेटअप
 def init_db():
@@ -39,9 +36,7 @@ def init_db():
             username TEXT,
             ff_uid TEXT,
             ff_name TEXT,
-            match_type TEXT,
-            utr_id TEXT,
-            status TEXT
+            match_type TEXT
         )
     ''')
     conn.commit()
@@ -53,9 +48,9 @@ def send_welcome(message):
     welcome_text = (
         "🏆 *Welcome to Free Fire Tournament Bot!*\n\n"
         "📜 *Commands List:*\n"
-        "🔹 /register - टूर्नामेंट के लिए रजिस्ट्रेशन प्रक्रिया शुरू करें\n"
+        "🔹 /register - टूर्नामेंट में भाग लें\n"
         "🔹 /unregister - अपना रजिस्ट्रेशन रद्द करें\n\n"
-        "📌 *नोट:* केवल अप्रूव्ड खिलाड़ियों को ही स्लॉट नंबर और रूम आईडी मिलेगी।"
+        "📌 *नोट:* केवल टॉप 48 खिलाड़ियों को ही स्लॉट मिलेगा।"
     )
     bot.reply_to(message, welcome_text, parse_mode='Markdown')
 
@@ -64,12 +59,12 @@ def send_welcome(message):
 def start_registration(message):
     conn = sqlite3.connect('tournament.db')
     cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM players WHERE status='Approved'")
+    cursor.execute("SELECT COUNT(*) FROM players")
     count = cursor.fetchone()
     conn.close()
 
     if count[0] >= MAX_PLAYERS:
-        bot.reply_to(message, f"❌ *माफ करें!* इस टूर्नामेंट के सभी {MAX_PLAYERS} स्लॉट फुल हो चुके हैं।", parse_mode='Markdown')
+        bot.reply_to(message, f"❌ *ماف करें!* इस टूर्नामेंट के सभी {MAX_PLAYERS} स्लॉट फुल हो चुके हैं।", parse_mode='Markdown')
         return
 
     msg = bot.reply_to(message, "📝 कृपया अपना **Free Fire UID** टाइप करके भेजें:")
@@ -88,105 +83,37 @@ def ask_match_type(message, ff_uid, user_id, username):
     markup = telebot.types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
     markup.add('Solo', 'Duo', 'Squad')
     
-    msg = bot.reply_to(message, "⚔️ अपना गेम मोड चुनें:", reply_markup=markup)
-    bot.register_next_step_handler(msg, lambda m: ask_payment(m, ff_uid, ff_name, user_id, username))
+    msg = bot.reply_to(message, "⚔️ आप किस मोड में खेलना चाहते हैं? नीचे दिए गए बटन से चुनें:", reply_markup=markup)
+    bot.register_next_step_handler(msg, lambda m: save_player(m, ff_uid, ff_name, user_id, username))
 
-# खिलाड़ी से UTR विवरण मांगना (UPI ID और बटन के साथ)
-def ask_payment(message, ff_uid, ff_name, user_id, username):
+def save_player(message, ff_uid, ff_name, user_id, username):
     match_type = message.text
     if match_type not in ['Solo', 'Duo', 'Squad']:
-        bot.reply_to(message, "❌ गलत विकल्प। कृपया /register फिर से करें।")
+        bot.reply_to(message, "❌ गलत विकल्प। कृपया /register कमांड फिर से चलाएं।")
         return
 
-    payment_text = (
-        "💳 *रजिस्ट्रेशन प्रक्रिया (Payment Verification):*\n\n"
-        f"📌 *हमारी UPI ID:* `{UPI_ID}`\n"
-        "👤 *Account Name:* Tarun Saini\n\n"
-        "👇 नीचे दिए गए बटन पर क्लिक करके सीधे अपने PhonePe/Paytm/GPay से पेमेंट कर सकते हैं।\n\n"
-        "1️⃣ पेमेंट करने के बाद मिली **12 अंकों की UTR ID / Transaction Number** को यहाँ चैट में टाइप करके भेजें।\n\n"
-        "⚠️ *ध्यान दें:* गलत UTR भेजने पर आपका रजिस्ट्रेशन रिजेक्ट कर दिया जाएगा।"
-    )
-    
-    # सीधे पेमेंट ऐप खोलने के लिए इनलाइन बटन बनाना
-    markup = telebot.types.InlineKeyboardMarkup()
-    btn_pay = telebot.types.InlineKeyboardButton("📱 Pay Via UPI App", url=PAYMENT_URL)
-    markup.add(btn_pay)
-    
-    msg = bot.send_message(message.chat.id, payment_text, parse_mode='Markdown', reply_markup=markup)
-    bot.register_next_step_handler(msg, lambda m: send_to_admin(m, ff_uid, ff_name, match_type, user_id, username))
-
-# एडमिन को पेंडिंग रिक्वेस्ट भेजना
-def send_to_admin(message, ff_uid, ff_name, match_type, user_id, username):
-    utr_id = message.text
-    
-    # डेटाबेस में पेंडिंग स्टेटस के साथ सेव करना
     conn = sqlite3.connect('tournament.db')
     cursor = conn.cursor()
     try:
-        cursor.execute("INSERT INTO players VALUES (?, ?, ?, ?, ?, ?, 'Pending')", (user_id, username, ff_uid, ff_name, match_type, utr_id))
+        cursor.execute("INSERT INTO players VALUES (?, ?, ?, ?, ?)", (user_id, username, ff_uid, ff_name, match_type))
         conn.commit()
         
-        bot.reply_to(message, "⏳ *आपका अनुरोध एडमिन को भेज दिया गया है!*\n\nसमीक्षा (Verification) पूरी होते ही आपको यहाँ स्लॉट नंबर मिल जाएगा।")
+        cursor.execute("SELECT COUNT(*) FROM players")
+        current_count = cursor.fetchone()
         
-        # एडमिन के लिए इनलाइन बटन बनाना
-        markup = telebot.types.InlineKeyboardMarkup()
-        btn_approve = telebot.types.InlineKeyboardButton("✅ Approve", callback_data=f"app_{user_id}")
-        btn_reject = telebot.types.InlineKeyboardButton("❌ Reject", callback_data=f"rej_{user_id}")
-        markup.add(btn_approve, btn_reject)
-        
-        admin_msg = (
-            f"📢 *नया रजिस्ट्रेशन अनुरोध (Pending):*\n\n"
+        success_msg = (
+            f"✅ *रजिस्ट्रेशन सफल रहा!*\n\n"
             f"👤 *Name:* {ff_name}\n"
             f"🆔 *UID:* {ff_uid}\n"
             f"⚔️ *Mode:* {match_type}\n"
-            f"🧾 *UTR/Details:* `{utr_id}`\n"
-            f"📱 *TG:* @{username}\n"
+            f"🎟️ *Your Slot Number:* #{current_count[0]}\n\n"
+            f"मैच शुरू होने से पहले रूम आईडी आपको यहाँ भेज दी जाएगी।"
         )
-        bot.send_message(ADMIN_ID, admin_msg, parse_mode='Markdown', reply_markup=markup)
-        
+        bot.reply_to(message, success_msg, parse_mode='Markdown', reply_markup=telebot.types.ReplyKeyboardRemove())
     except sqlite3.IntegrityError:
-        bot.reply_to(message, "❌ आप पहले से ही रजिस्टर्ड हैं या आपका अनुरोध पेंडिंग है।")
+        bot.reply_to(message, "❌ आप पहले से ही इस टूर्नामेंट में रजिस्टर्ड हैं।", reply_markup=telebot.types.ReplyKeyboardRemove())
     finally:
         conn.close()
-
-# एडमिन के बटन क्लिक को हैंडल करना (Callback Query)
-@bot.callback_query_handler(func=lambda call: call.data.startswith(('app_', 'rej_')))
-def handle_admin_action(call):
-    action, player_id = call.data.split('_')
-    player_id = int(player_id)
-    
-    conn = sqlite3.connect('tournament.db')
-    cursor = conn.cursor()
-    
-    if action == 'app':
-        # स्टेटस अपडेट करना
-        cursor.execute("UPDATE players SET status='Approved' WHERE user_id=?", (player_id,))
-        conn.commit()
-        
-        # स्लॉट नंबर पता करना
-        cursor.execute("SELECT COUNT(*) FROM players WHERE status='Approved'")
-        slot_num = cursor.fetchone()
-        
-        # खिलाड़ी को मैसेज भेजना
-        try:
-            bot.send_message(player_id, f"🎉 *बधाई हो! आपका रजिस्ट्रेशन अप्रूव हो गया है।*\n\n🎟️ *Your Slot Number:* #{slot_num[0]}\n\nमैच शुरू होने से पहले रूम आईडी आपको यहीं मिल जाएगी।")
-            bot.edit_message_text(f"{call.message.text}\n\n🟢 *Status: Approved (Slot #{slot_num[0]})*", call.message.chat.id, call.message.message_id, reply_markup=None)
-        except Exception:
-            bot.answer_callback_query(call.id, "खिलाड़ी को मैसेज नहीं भेजा जा सका!")
-            
-    elif action == 'rej':
-        # डेटाबेस से हटाना
-        cursor.execute("DELETE FROM players WHERE user_id=?", (player_id,))
-        conn.commit()
-        
-        try:
-            bot.send_message(player_id, "❌ *माफ करें!* आपका रजिस्ट्रेशन अनुरोध एडमिन द्वारा रिजेक्ट कर दिया गया है। कृपया सही विवरण के साथ दोबारा प्रयास करें।")
-            bot.edit_message_text(f"{call.message.text}\n\n🔴 *Status: Rejected*", call.message.chat.id, call.message.message_id, reply_markup=None)
-        except Exception:
-            pass
-            
-    conn.close()
-    bot.answer_callback_query(call.id, "Action Completed!")
 
 # नाम हटाने की कमांड
 @bot.message_handler(commands=['unregister'])
@@ -204,11 +131,12 @@ def remove_player(message):
         bot.reply_to(message, "❌ आप इस टूर्नामेंट में रजिस्टर्ड नहीं हैं।")
     conn.close()
 
-# एडमिन रूम सेंडिंग फीचर (केवल अप्रूव्ड खिलाड़ियों को)
+# ----------------- एडमिन फीचर -----------------
+
 @bot.message_handler(commands=['sendroom'])
 def ask_room_details(message):
     if message.from_user.id == ADMIN_ID:
-        msg = bot.reply_to(message, "📢 सभी अप्रूव्ड खिलाड़ियों को भेजने के लिए रूम विवरण टाइप करें:\n\n*(उदाहरण: Room ID: 12345, Pass: 555)*")
+        msg = bot.reply_to(message, "📢 सभी खिलाड़ियों को भेजने के लिए रूम विवरण टाइप करें:\n\n*(उदाहरण: Room ID: 12345, Pass: 555)*")
         bot.register_next_step_handler(msg, broadcast_room)
     else:
         bot.reply_to(message, "❌ यह कमांड केवल एडमिन के लिए है।")
@@ -217,7 +145,7 @@ def broadcast_room(message):
     room_details = message.text
     conn = sqlite3.connect('tournament.db')
     cursor = conn.cursor()
-    cursor.execute("SELECT user_id FROM players WHERE status='Approved'")
+    cursor.execute("SELECT user_id FROM players")
     all_players = cursor.fetchall()
     conn.close()
     
@@ -229,24 +157,35 @@ def broadcast_room(message):
         except Exception:
             pass
             
-    bot.reply_to(message, f"✅ रूम डिटेल्स सफलतापूर्वक {success_count} अप्रूव्ड खिलाड़ियों को भेज दी गई है!")
+    bot.reply_to(message, f"✅ रूम डिटेल्स सफलतापूर्वक {success_count} खिलाड़ियों को भेज दी गई है!")
 
 @bot.message_handler(commands=['players'])
 def view_players(message):
     if message.from_user.id == ADMIN_ID:
         conn = sqlite3.connect('tournament.db')
         cursor = conn.cursor()
-        cursor.execute("SELECT ff_name, ff_uid, match_type, utr_id FROM players WHERE status='Approved'")
+        cursor.execute("SELECT ff_name, ff_uid, match_type, username FROM players")
         rows = cursor.fetchall()
         
-        cursor.execute("SELECT COUNT(*) FROM players WHERE status='Approved'")
+        cursor.execute("SELECT COUNT(*) FROM players")
         total_count = cursor.fetchone()
         conn.close()
         
         if not rows:
-            bot.reply_to(message, "📭 अभी तक कोई भी अप्रूव्ड खिलाड़ी नहीं है।")
+            bot.reply_to(message, "📭 अभी तक किसी भी खिलाड़ी ने रजिस्ट्रेशन नहीं किया है।")
             return
             
-        response = f"🏆 *Approved Players ({total_count[0]}/{MAX_PLAYERS}):*\n\n"
+        response = f"🏆 *Registered Players ({total_count[0]}/{MAX_PLAYERS}):*\n\n"
         for index, row in enumerate(rows, start=1):
-                         
+            response += f"{index}. *{row[0]}* ({row[2]}) | UID: {row[1]} | TG: @{row[3]}\n"
+            
+        bot.reply_to(message, response, parse_mode='Markdown')
+    else:
+        bot.reply_to(message, "❌ यह कमांड केवल एडमिन के लिए है।")
+
+if __name__ == '__main__':
+    init_db()
+    keep_alive()
+    print("Advanced Tournament Bot with Web Server is running...")
+    bot.infinity_polling()
+    
