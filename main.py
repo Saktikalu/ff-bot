@@ -23,7 +23,7 @@ API_TOKEN = "8678880550:AAGOQEJ_xQMgfOALgQAqqtq0VSTFUQDwiOY"
 bot = telebot.TeleBot(API_TOKEN)
 
 # 3. आपकी टेलीग्राम Numeric ID
-ADMIN_ID = 7694125647
+ADMIN_ID = 8678880550
 MAX_PLAYERS = 48  # टूर्नामेंट के लिए अधिकतम खिलाड़ी
 
 # डेटाबेस सेटअप
