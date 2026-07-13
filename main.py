@@ -4,7 +4,7 @@ import os
 from flask import Flask
 from threading import Thread
 
-# 1. वेब सर्वर सेटअप (रेंडर के लिए)
+# 1. वेब सर्वर सेटअप (रेंडर को फेल होने से बचाने के लिए)
 app = Flask('')
 
 @app.route('/')
@@ -25,9 +25,9 @@ bot = telebot.TeleBot(API_TOKEN)
 ADMIN_ID = 7694125647
 MAX_PLAYERS = 48  # टूर्नामेंट के लिए अधिकतम खिलाड़ी
 
-# अपने QR कोड इमेज की डायरेक्ट लिंक यहाँ डालें (Optional)
-# यदि आपके पास लिंक नहीं है, तो बॉट सिर्फ टेक्स्ट निर्देश दिखाएगा।
-QR_CODE_URL = "https://your-image-link-here.com"
+# आपकी असली UPI ID और पे-लिंक डिटेल्स
+UPI_ID = "tarunsaini5500@ptyes"
+PAYMENT_URL = "upi://pay?pa=tarunsaini5500@ptyes&pn=Tarun%20Saini"
 
 # डेटाबेस सेटअप
 def init_db():
@@ -65,10 +65,10 @@ def start_registration(message):
     conn = sqlite3.connect('tournament.db')
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM players WHERE status='Approved'")
-    count = cursor.fetchone()[0]
+    count = cursor.fetchone()
     conn.close()
 
-    if count >= MAX_PLAYERS:
+    if count[0] >= MAX_PLAYERS:
         bot.reply_to(message, f"❌ *माफ करें!* इस टूर्नामेंट के सभी {MAX_PLAYERS} स्लॉट फुल हो चुके हैं।", parse_mode='Markdown')
         return
 
@@ -91,7 +91,7 @@ def ask_match_type(message, ff_uid, user_id, username):
     msg = bot.reply_to(message, "⚔️ अपना गेम मोड चुनें:", reply_markup=markup)
     bot.register_next_step_handler(msg, lambda m: ask_payment(m, ff_uid, ff_name, user_id, username))
 
-# खिलाड़ी से UTR विवरण मांगना
+# खिलाड़ी से UTR विवरण मांगना (UPI ID और बटन के साथ)
 def ask_payment(message, ff_uid, ff_name, user_id, username):
     match_type = message.text
     if match_type not in ['Solo', 'Duo', 'Squad']:
@@ -99,18 +99,20 @@ def ask_payment(message, ff_uid, ff_name, user_id, username):
         return
 
     payment_text = (
-        "💳 *रजिस्ट्रेशन प्रक्रिया (Verification Step):*\n\n"
-        "1. ऊपर दिए गए निर्देशों/QR कोड के अनुसार प्रक्रिया पूरी करें।\n"
-        "2. सफलतापूर्वक पूरा होने के बाद मिली **UTR ID / Transaction Number** को नीचे टाइप करके भेजें।\n\n"
+        "💳 *रजिस्ट्रेशन प्रक्रिया (Payment Verification):*\n\n"
+        f"📌 *हमारी UPI ID:* `{UPI_ID}`\n"
+        "👤 *Account Name:* Tarun Saini\n\n"
+        "👇 नीचे दिए गए बटन पर क्लिक करके सीधे अपने PhonePe/Paytm/GPay से पेमेंट कर सकते हैं।\n\n"
+        "1️⃣ पेमेंट करने के बाद मिली **12 अंकों की UTR ID / Transaction Number** को यहाँ चैट में टाइप करके भेजें।\n\n"
         "⚠️ *ध्यान दें:* गलत UTR भेजने पर आपका रजिस्ट्रेशन रिजेक्ट कर दिया जाएगा।"
     )
     
-    # यदि इमेज उपलब्ध है तो इमेज भेजें, अन्यथा सिर्फ टेक्स्ट
-    try:
-        msg = bot.send_photo(message.chat.id, QR_CODE_URL, caption=payment_text, parse_mode='Markdown', reply_markup=telebot.types.ReplyKeyboardRemove())
-    except Exception:
-        msg = bot.send_message(message.chat.id, payment_text, parse_mode='Markdown', reply_markup=telebot.types.ReplyKeyboardRemove())
-        
+    # सीधे पेमेंट ऐप खोलने के लिए इनलाइन बटन बनाना
+    markup = telebot.types.InlineKeyboardMarkup()
+    btn_pay = telebot.types.InlineKeyboardButton("📱 Pay Via UPI App", url=PAYMENT_URL)
+    markup.add(btn_pay)
+    
+    msg = bot.send_message(message.chat.id, payment_text, parse_mode='Markdown', reply_markup=markup)
     bot.register_next_step_handler(msg, lambda m: send_to_admin(m, ff_uid, ff_name, match_type, user_id, username))
 
 # एडमिन को पेंडिंग रिक्वेस्ट भेजना
@@ -163,12 +165,12 @@ def handle_admin_action(call):
         
         # स्लॉट नंबर पता करना
         cursor.execute("SELECT COUNT(*) FROM players WHERE status='Approved'")
-        slot_num = cursor.fetchone()[0]
+        slot_num = cursor.fetchone()
         
         # खिलाड़ी को मैसेज भेजना
         try:
-            bot.send_message(player_id, f"🎉 *बधाई हो! आपका रजिस्ट्रेशन अप्रूव हो गया है।*\n\n🎟️ *Your Slot Number:* #{slot_num}\n\nमैच शुरू होने से पहले रूम आईडी आपको यहीं मिल जाएगी।")
-            bot.edit_message_text(f"{call.message.text}\n\n🟢 *Status: Approved (Slot #{slot_num})*", call.message.chat.id, call.message.message_id, reply_markup=None)
+            bot.send_message(player_id, f"🎉 *बधाई हो! आपका रजिस्ट्रेशन अप्रूव हो गया है।*\n\n🎟️ *Your Slot Number:* #{slot_num[0]}\n\nमैच शुरू होने से पहले रूम आईडी आपको यहीं मिल जाएगी।")
+            bot.edit_message_text(f"{call.message.text}\n\n🟢 *Status: Approved (Slot #{slot_num[0]})*", call.message.chat.id, call.message.message_id, reply_markup=None)
         except Exception:
             bot.answer_callback_query(call.id, "खिलाड़ी को मैसेज नहीं भेजा जा सका!")
             
@@ -238,15 +240,13 @@ def view_players(message):
         rows = cursor.fetchall()
         
         cursor.execute("SELECT COUNT(*) FROM players WHERE status='Approved'")
-        total_count = cursor.fetchone()[0]
+        total_count = cursor.fetchone()
         conn.close()
         
         if not rows:
             bot.reply_to(message, "📭 अभी तक कोई भी अप्रूव्ड खिलाड़ी नहीं है।")
             return
             
-        response = f"🏆 *Approved Players ({total_count}/{MAX_PLAYERS}):*\n\n"
+        response = f"🏆 *Approved Players ({total_count[0]}/{MAX_PLAYERS}):*\n\n"
         for index, row in enumerate(rows, start=1):
-            response += f"{index}. *{row[0]}* ({row[2]}) | UID: {row[1]} | UTR: {row[3]}\n"
-
-    
+                         
